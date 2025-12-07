@@ -1,0 +1,91 @@
+#include <iostream>
+#include <thread>
+#include <chrono>
+#include <mutex>
+#include <map>
+#include <vector>
+#include <algorithm>
+
+using namespace std;
+using namespace this_thread;
+using namespace chrono;
+
+class Swimmer {
+	int time = 0;
+	int distance = 0;
+	int speed = 0;
+	int id = 0;
+	string name = "None";
+
+public:
+	void setId(int id) { this->id = id; }
+	void setTime(int time) { this->time += time; }
+	void plusDistance(int distance) { this->distance += distance; }
+	void setDistance(int distance) { this->distance = distance; }
+	void setSpeed(int speed) { this->speed = speed; }
+	void setName(string& name) { this->name = name; }
+
+	int getDistance() { return distance; }
+	int getId() { return id; }
+	int getTime() { return time; }
+	int getSpeed() { return speed; }
+	string getName() { return name; }
+};
+
+vector <Swimmer> swimmers(6);
+mutex mx;
+
+void race(int id) {
+	while (swimmers[id].getDistance() < 100) {
+		this_thread::sleep_for(chrono::seconds(1));
+		swimmers[id].plusDistance(swimmers[id].getSpeed());
+		swimmers[id].setTime(1);
+
+		if (swimmers[id].getDistance() >= 100) { swimmers[id].setDistance(100); }
+
+		
+		lock_guard<mutex>lock(mx);
+		cout << "Swimmer " << swimmers[id].getName() << " is swimming " << swimmers[id].getSpeed() << " m/s speed, he swam " << swimmers[id].getDistance() << " m\n";
+	}
+}
+
+int main() {
+	int lines = 6, swimmers_count = 6;
+	int finish = 100;
+
+	cout << "Enter names of swimmers\n";
+
+	for (size_t i = 0; i < swimmers.size(); i++) {
+		int speed; string name;
+		cout << "Enter name and speed of " << i + 1 << " swimmer: "; cin >> name >> speed;
+		swimmers[i].setName(name);
+		swimmers[i].setSpeed(speed);
+		swimmers[i].setId(i);
+	}
+
+	cout << "Emulation starts in 3 seconds\n";
+	for (auto i = 0; i < 3; i++) {
+		sleep_for(seconds(1));
+		cout << 3 - i << endl;
+		sleep_until(system_clock::now() + seconds(1));
+	}
+
+	vector<thread>threads;
+	for (int i = 0; i < 6; i++) {
+		threads.push_back(thread(race, i));
+	}
+
+	for (auto& t : threads) {
+		t.join();
+	}
+
+	sort(swimmers.begin(), swimmers.end(), [](Swimmer a, Swimmer b) {
+		return a.getTime() < b.getTime();
+		});
+
+	cout << "\n=== FINAL RESULTS ===\n";
+	for (size_t i = 0; i < swimmers.size(); i++) {
+		cout << i + 1 << ". " << swimmers[i].getName()
+			<< " - " << swimmers[i].getTime() << " seconds\n";
+	}
+}
