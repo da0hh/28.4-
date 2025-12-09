@@ -1,0 +1,88 @@
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <random>
+#include <chrono>
+#include <string>
+
+using namespace std;
+
+const int TOTAL_DELIVERIES = 10;
+const std::vector<std::string> MENU = { "пицца", "суп", "стейк", "салат", "суши" };
+
+std::queue<std::string> ready_orders; 
+std::mutex mtx;
+std::condition_variable cv;  
+std::atomic<int> delivered_count{ 0 };  
+
+int random_in_range(int min, int max) {
+    static thread_local std::mt19937 gen(std::random_device{}());
+    std::uniform_int_distribution<> dist(min, max);
+    return dist(gen);
+}
+
+void order_generator() {
+    while (delivered_count < TOTAL_DELIVERIES) {
+        int delay = random_in_range(5, 10);
+        std::this_thread::sleep_for(std::chrono::seconds(delay));
+
+        int dish_idx = random_in_range(0, MENU.size() - 1);
+        std::string order = MENU[dish_idx];
+
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            std::cout << "Принят заказ: " << order << std::endl;
+        }
+
+        std::thread([order]() {
+            int cook_time = random_in_range(5, 15);
+            std::this_thread::sleep_for(std::chrono::seconds(cook_time));
+
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                ready_orders.push(order);
+                std::cout << "Готово: " << order << " (готовилось " << cook_time << " сек)" << std::endl;
+            }
+            cv.notify_one();
+            }).detach();
+    }
+}
+
+void courier() {
+    while (delivered_count < TOTAL_DELIVERIES) {
+        std::this_thread::sleep_for(std::chrono::seconds(30));
+
+        std::unique_lock<std::mutex> lock(mtx);
+
+        cv.wait(lock, [] { return !ready_orders.empty() || delivered_count >= TOTAL_DELIVERIES; });
+
+        if (delivered_count >= TOTAL_DELIVERIES) break;
+
+        while (!ready_orders.empty()) {
+            std::string order = ready_orders.front();
+            ready_orders.pop();
+            std::cout << "Курьер забрал и доставил: " << order << std::endl;
+            delivered_count++;
+
+            if (delivered_count >= TOTAL_DELIVERIES) break;
+        }
+    }
+}
+
+
+int main() {
+	setlocale(LC_ALL, "RU");
+    std::cout << "Ресторан начал работу. Ожидается " << TOTAL_DELIVERIES << " доставок.\n";
+
+    std::thread order_thread(order_generator);
+    std::thread courier_thread(courier);
+
+    order_thread.join();
+    courier_thread.join();
+
+    std::cout << "Работа завершена. Всего доставлено: " << delivered_count << " заказов." << std::endl;
+    return 0;
+}
