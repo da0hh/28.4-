@@ -1,0 +1,89 @@
+#include <iostream>
+#include <thread>
+#include <chrono>
+#include <mutex>
+#include <vector>
+#include <algorithm>
+
+using namespace std;
+
+class Train {
+	string name = "None";
+	int time = 0;
+	bool acces = false;
+
+public:
+	void setName(const string& name) { this->name = name; }
+	void setTime(int time) { this->time = time; }
+	void changeAccess(bool acces) { this->acces = acces; }
+
+	string getName() { return name; }
+	int getTime() { return time; }
+	bool getAccess() { return acces; }
+};
+
+mutex mx;
+bool station_occupied = false;
+condition_variable station_cv;
+
+void to_station(Train& train) {
+	this_thread::sleep_for(chrono::seconds(train.getTime()));
+
+	cout << "Train " << train.getName() << " came to station\nWaiting for free spot\n";
+	
+	unique_lock<mutex> lock(mx);
+	station_cv.wait(lock, [] { return !station_occupied; });
+
+	station_occupied = true;
+	cout << "Поезд " << train.getName() << " занял место на вокзале." << endl;
+
+	train.changeAccess(true);
+
+	string command;
+
+	do {
+		cout << "Введите 'depart' для отправления поезда " << train.getName() << ": ";
+		cin >> command;
+	} while (command != "depart" && command != "DEPART" && command != "Depart");
+
+	cout << "Поезд " << train.getName() << " отбывает с вокзала." << endl;
+
+	station_occupied = false;
+	train.changeAccess(false);
+
+	station_cv.notify_all();
+}
+
+int main() {
+	setlocale(LC_ALL, "RU");
+
+    vector<Train> trains(3);
+    vector<thread> trainThreads;
+
+    for (int i = 0; i < 3; ++i) {
+        string name;
+        int time;
+
+        cout << "Введите название поезда №" << (i + 1) << ": ";
+        cin >> name;
+        trains[i].setName(name);
+
+        cout << "Введите время в пути для поезда " << name
+            << " (в секундах): ";
+        cin >> time;
+        trains[i].setTime(time);
+
+        trains[i].changeAccess(false);
+    }
+
+    for (auto& train : trains) {
+        trainThreads.emplace_back(to_station, ref(train));
+    }
+
+    for (auto& thread : trainThreads) {
+        thread.join();
+    }
+
+    cout << "Все поезда побывали на вокзале. Программа завершена." << endl;
+    return 0;
+}
